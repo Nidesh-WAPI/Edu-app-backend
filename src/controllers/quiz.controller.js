@@ -33,12 +33,15 @@ const generateQuiz = asyncHandler(async (req, res) => {
   if (!syllabus || !classLevel || !subject) throw new ApiError(404, 'Invalid syllabus, class, or subject');
   if (!chapters.length) throw new ApiError(400, 'Selected chapters are not ready. Please wait for processing to complete.');
 
-  const chunks = await ChapterChunk.find({
+  // Fetch ALL chunks for the selected chapters, then randomly sample them
+  // so each quiz attempt draws from a different spread of content.
+  const allChunks = await ChapterChunk.find({
     chapter: { $in: chapters.map((c) => c._id) },
-  })
-    .select('content chunkIndex')
-    .sort({ chunkIndex: 1 })
-    .limit(MAX_QUESTIONS + 5); // fetch a few extra for context
+  }).select('content chunkIndex');
+
+  // Fisher-Yates shuffle → take a fresh random sample every time
+  const shuffled = allChunks.sort(() => Math.random() - 0.5);
+  const chunks   = shuffled.slice(0, MAX_QUESTIONS + 5);
 
   if (!chunks.length) {
     throw new ApiError(400, 'No textbook content found in selected chapters.');
