@@ -86,7 +86,26 @@ ${contextText}`;
     throw new Error('No questions were generated. Please try again.');
   }
 
-  return questions.slice(0, numQuestions);
+  // Shuffle answer options server-side — never trust Claude to vary position.
+  // For each question: shuffle the options array, update `correct` to the new index.
+  const shuffled = questions.slice(0, numQuestions).map((q) => {
+    const options  = Array.isArray(q.options) ? [...q.options] : [];
+    const correctText = options[q.correct]; // remember the correct answer text
+
+    // Fisher-Yates shuffle
+    for (let i = options.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [options[i], options[j]] = [options[j], options[i]];
+    }
+
+    return {
+      ...q,
+      options,
+      correct: options.indexOf(correctText), // find where it landed after shuffle
+    };
+  });
+
+  return shuffled;
 };
 
 /**
