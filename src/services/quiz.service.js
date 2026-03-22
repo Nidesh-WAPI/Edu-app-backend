@@ -24,10 +24,20 @@ const QUESTION_STYLES = [
   'Mix all question types: definitions, processes, comparisons, and applications.',
 ];
 
-const generateQuizQuestions = async ({ chunks, numQuestions, syllabusName, className, subjectName }) => {
+// Grade tier (mirrors claude.service.js logic)
+const getGradeTier = (grade) => {
+  const g = parseInt(grade, 10);
+  if (!isNaN(g) && g >= 1 && g <= 3) return 'kids';
+  if (!isNaN(g) && g >= 4 && g <= 7) return 'intermediate';
+  return 'standard';
+};
+
+const generateQuizQuestions = async ({ chunks, numQuestions, syllabusName, className, subjectName, grade }) => {
   if (!process.env.CLAUDE_API_KEY) throw new Error('CLAUDE_API_KEY not configured');
 
-  const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
+  const client   = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
+  const tier     = getGradeTier(grade);
+  const isKids   = tier === 'kids';
 
   // Chunks are already randomly shuffled by the controller — take the first N
   const contextText = chunks
@@ -41,19 +51,33 @@ const generateQuizQuestions = async ({ chunks, numQuestions, syllabusName, class
 
   const systemPrompt = `You generate quiz questions as a strict JSON array. You MUST return ONLY the raw JSON array — no markdown, no code blocks, no explanation. Just the JSON.`;
 
+  const gradeRules = isKids
+    ? `IMPORTANT — This quiz is for a young child (${className}):
+- Use VERY simple words — no difficult terms
+- Keep questions SHORT (max 10 words)
+- Make it feel fun and friendly 🌟
+- Difficulty: ~70% easy, ~30% medium — keep it encouraging
+- Add a relevant emoji at the end of each question`
+    : tier === 'intermediate'
+    ? `IMPORTANT — This quiz is for ${className}:
+- Use clear, age-appropriate language
+- Mix difficulty: ~40% easy, ~45% medium, ~15% hard`
+    : `IMPORTANT — This quiz is for ${className}:
+- Mix difficulty: ~30% easy, ~50% medium, ~20% hard`;
+
   const userPrompt = `Create exactly ${numQuestions} UNIQUE multiple choice questions for a ${syllabusName} ${className} ${subjectName} quiz.
 
 STYLE FOR THIS ATTEMPT (variation ${seed}): ${style}
+
+${gradeRules}
 
 RULES:
 - Base questions ONLY on the textbook content provided below
 - Each question must have exactly 4 options
 - No two questions should test the same fact or sentence
-- Vary how questions are phrased: use "Which of the following…", "What is…", "Why does…", "How does…", etc.
-- Mix difficulty: ~30% easy, ~50% medium, ~20% hard
+- Vary question phrasing: "Which of the following…", "What is…", "Why does…", "How does…", etc.
 - "topic" field: 2-4 word topic name (e.g. "Cell Division")
 - "correct" field: 0-based index of the correct option
-- Shuffle the position of the correct answer across questions (don't always put it at index 0)
 
 Return ONLY this JSON array (absolutely no other text):
 [

@@ -40,6 +40,7 @@ const chatWithAI = asyncHandler(async (req, res) => {
     syllabusName: syllabus.name,
     className: `${classLevel.name}${classLevel.grade ? ` (Grade ${classLevel.grade})` : ''}`,
     subjectName: subject.name,
+    grade: classLevel.grade,
   });
 
   res.json(new ApiResponse(200, 'AI response generated', result));
@@ -99,6 +100,7 @@ const deepDive = asyncHandler(async (req, res) => {
     className: `${classLevel.name}${classLevel.grade ? ` (Grade ${classLevel.grade})` : ''}`,
     subjectName: subject.name,
     contextChunks,
+    grade: classLevel.grade,
   });
 
   // Quiz step: parse JSON from response

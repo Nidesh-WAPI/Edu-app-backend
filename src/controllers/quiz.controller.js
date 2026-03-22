@@ -55,6 +55,7 @@ const generateQuiz = asyncHandler(async (req, res) => {
     syllabusName: syllabus.name,
     className,
     subjectName: subject.name,
+    grade: classLevel.grade,
   });
 
   res.json(new ApiResponse(200, 'Quiz generated successfully', {

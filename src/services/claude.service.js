@@ -14,18 +14,47 @@ const CLAUDE_MODEL = 'claude-haiku-4-5';
 const MAX_CONTEXT_CHUNKS = 8;
 const MAX_HISTORY_TURNS = 10; // last N conversation turns to keep
 
-// ── Build the system prompt ───────────────────────────────────────────────────
-const buildSystemPrompt = (syllabusName, className, subjectName, contextChunks, totalChunksInSubject) => {
-  const hasAnyContent = totalChunksInSubject > 0;
-  const hasRelevantContext = contextChunks.length > 0;
+// ── Grade tier detection ──────────────────────────────────────────────────────
+const getGradeTier = (grade) => {
+  const g = parseInt(grade, 10);
+  if (!isNaN(g) && g >= 1 && g <= 3) return 'kids';
+  if (!isNaN(g) && g >= 4 && g <= 7) return 'intermediate';
+  return 'standard';
+};
 
-  const teachingStyle = `YOUR TEACHING STYLE:
-• Explain concepts clearly and simply, like a patient teacher
+const buildTeachingStyle = (grade) => {
+  const tier = getGradeTier(grade);
+  if (tier === 'kids') return `YOUR TEACHING STYLE (Young Learner 🌟):
+• Use VERY simple words — explain like talking to a 6–8 year old
+• Write SHORT sentences — maximum 8–10 words each
+• Add fun emojis to every key point 🌱🐛🦋🎉
+• Use fun comparisons the child already knows ("like building blocks", "like your tummy", "like a toy box")
+• Be VERY warm, cheerful and encouraging — celebrate every question! 🎊
+• Explain only ONE idea at a time — no long lists
+• End with a fun "Did you know? 🤔" fact
+• Use "you" and speak directly and warmly to the child`;
+
+  if (tier === 'intermediate') return `YOUR TEACHING STYLE:
+• Explain clearly using simple, everyday language
+• Use emojis to highlight key ideas ✨
+• Give relatable real-life examples students can connect to
+• Build from simple → complex step by step
+• Be encouraging and positive 🎯`;
+
+  return `YOUR TEACHING STYLE:
+• Explain concepts clearly and precisely
 • Use bullet points, numbered steps, or tables when it helps clarity
 • Give real-world examples to make abstract concepts concrete
 • Be encouraging and positive — students learn better when motivated
 • For formulas or definitions, highlight them clearly
 • Suggest follow-up topics or questions to deepen understanding`;
+};
+
+// ── Build the system prompt ───────────────────────────────────────────────────
+const buildSystemPrompt = (syllabusName, className, subjectName, contextChunks, totalChunksInSubject, grade) => {
+  const hasAnyContent = totalChunksInSubject > 0;
+  const hasRelevantContext = contextChunks.length > 0;
+  const teachingStyle = buildTeachingStyle(grade);
 
   // ── Case 1: Relevant chunks found → strict textbook mode ──────────────────
   if (hasRelevantContext) {
@@ -175,6 +204,7 @@ const chatWithTextbook = async ({
   syllabusName,
   className,
   subjectName,
+  grade,
 }) => {
   if (!process.env.CLAUDE_API_KEY) {
     throw new Error('CLAUDE_API_KEY is not configured. Please add it to the .env file.');
@@ -197,7 +227,7 @@ const chatWithTextbook = async ({
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 1500,
-    system: buildSystemPrompt(syllabusName, className, subjectName, chunks, totalInSubject),
+    system: buildSystemPrompt(syllabusName, className, subjectName, chunks, totalInSubject, grade),
     messages,
   });
 
@@ -214,14 +244,27 @@ const chatWithTextbook = async ({
 // ── Deep Dive step prompts ────────────────────────────────────────────────────
 const DEEP_DIVE_STEPS = ['explain', 'examples', 'quiz', 'next'];
 
-const buildDeepDivePrompt = (step, topic, syllabusName, className, subjectName) => {
-  const base = `You are an expert, encouraging teacher for ${syllabusName} ${className} ${subjectName}. The student is learning about: "${topic}".`;
+const buildDeepDivePrompt = (step, topic, syllabusName, className, subjectName, grade) => {
+  const tier = getGradeTier(grade);
+  const isKids = tier === 'kids';
+
+  const base = isKids
+    ? `You are a super fun, friendly teacher for ${syllabusName} ${className} ${subjectName}. 🌟 The student is a young child learning about: "${topic}". Use very simple words, short sentences, and lots of emojis!`
+    : `You are an expert, encouraging teacher for ${syllabusName} ${className} ${subjectName}. The student is learning about: "${topic}".`;
 
   switch (step) {
     case 'explain':
       return {
         system: base,
-        user: `Explain "${topic}" in a clear, student-friendly way. Include:
+        user: isKids
+          ? `Explain "${topic}" in a very fun, simple way for a young child! Include:
+- What it is (1 simple sentence with an emoji 🌟)
+- Why it is cool or important (1–2 sentences)
+- A fun comparison they know ("It's like...")
+- 2–3 key things to remember (very short, with emojis)
+
+Use ## headings. Keep every sentence very short and fun! 🎉`
+          : `Explain "${topic}" in a clear, student-friendly way. Include:
 - A simple definition (1-2 sentences)
 - Why it matters / its importance
 - A relatable analogy or comparison
@@ -229,10 +272,19 @@ const buildDeepDivePrompt = (step, topic, syllabusName, className, subjectName) 
 
 Use ## headings to structure each section. Keep language simple and encouraging.`,
       };
+
     case 'examples':
       return {
         system: base,
-        user: `Give exactly 3 real-world examples of "${topic}" that a student can easily relate to.
+        user: isKids
+          ? `Give exactly 3 fun, easy examples of "${topic}" that a young child can understand! 🎈
+
+Format each like this:
+**Example 1: [Fun Title] [emoji]**
+[1–2 very short, simple sentences. Use words a 6-year-old knows!]
+
+Make it super fun and easy to picture! 🌈`
+          : `Give exactly 3 real-world examples of "${topic}" that a student can easily relate to.
 
 Format each as:
 **Example 1: [Descriptive Title]**
@@ -240,10 +292,23 @@ Format each as:
 
 Make the examples vivid and memorable.`,
       };
+
     case 'quiz':
       return {
         system: `You are a teacher creating a quiz. You MUST return ONLY a valid JSON array — no markdown, no explanation, no code blocks, just the raw JSON array.`,
-        user: `Create exactly 3 multiple choice questions to test a student's understanding of "${topic}" from ${subjectName}.
+        user: isKids
+          ? `Create exactly 3 very simple, fun multiple choice questions about "${topic}" for a young child in ${subjectName}. Use very simple words. Make it feel like a game! 🎮
+
+Return ONLY this JSON array (no other text):
+[
+  {
+    "question": "Short, simple question? 🌟",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correct": 0,
+    "explanation": "Short, cheerful reason why this is correct! 🎉"
+  }
+]`
+          : `Create exactly 3 multiple choice questions to test a student's understanding of "${topic}" from ${subjectName}.
 
 Return ONLY this JSON array (no other text whatsoever):
 [
@@ -255,10 +320,19 @@ Return ONLY this JSON array (no other text whatsoever):
   }
 ]`,
       };
+
     case 'next':
       return {
         system: base,
-        user: `The student just finished learning "${topic}" in ${subjectName}. Suggest 4 related topics to explore next.
+        user: isKids
+          ? `The child just learned about "${topic}" in ${subjectName}! 🎉 Suggest 4 fun topics to explore next.
+
+Format exactly as:
+1. **[Topic Name]** 🌟 — [One very simple sentence — what fun thing they will discover!]
+2. **[Topic Name]** 🌿 — [One very simple sentence]
+3. **[Topic Name]** 🔍 — [One very simple sentence]
+4. **[Topic Name]** 💡 — [One very simple sentence]`
+          : `The student just finished learning "${topic}" in ${subjectName}. Suggest 4 related topics to explore next.
 
 Format exactly as:
 1. **[Topic Name]** — [One sentence describing what they'll discover]
@@ -268,6 +342,7 @@ Format exactly as:
 
 Make topics specific, directly related to "${topic}", and part of ${subjectName}.`,
       };
+
     default:
       throw new Error(`Unknown deep dive step: ${step}`);
   }
@@ -277,7 +352,7 @@ Make topics specific, directly related to "${topic}", and part of ${subjectName}
  * Generate deep dive content for a specific topic and learning step.
  * Returns raw Claude text (quiz step returns parseable JSON string).
  */
-const deepDiveStep = async ({ topic, step, syllabusName, className, subjectName, contextChunks = [] }) => {
+const deepDiveStep = async ({ topic, step, syllabusName, className, subjectName, contextChunks = [], grade }) => {
   if (!process.env.CLAUDE_API_KEY) {
     throw new Error('CLAUDE_API_KEY is not configured.');
   }
@@ -286,7 +361,7 @@ const deepDiveStep = async ({ topic, step, syllabusName, className, subjectName,
   }
 
   const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
-  const { system, user } = buildDeepDivePrompt(step, topic, syllabusName, className, subjectName);
+  const { system, user } = buildDeepDivePrompt(step, topic, syllabusName, className, subjectName, grade);
 
   // Prepend relevant textbook context if available
   let systemWithContext = system;
