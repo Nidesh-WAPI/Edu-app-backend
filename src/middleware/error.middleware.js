@@ -4,6 +4,12 @@ const errorMiddleware = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal Server Error';
 
+  // Always log unexpected server errors
+  if (statusCode >= 500) {
+    console.error(`[ERROR] ${req.method} ${req.originalUrl}`);
+    console.error(err);
+  }
+
   if (err.name === 'CastError') {
     statusCode = 400;
     message = `Invalid ${err.path}: ${err.value}`;

@@ -7,7 +7,16 @@ const errorMiddleware = require('./middleware/error.middleware');
 const app = express();
 
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:5175').split(',').map(o => o.trim());
-app.use(cors({ origin: (origin, cb) => (!origin || allowedOrigins.includes(origin) ? cb(null, true) : cb(new Error('Not allowed by CORS'))), credentials: true }));
+const isDev = process.env.NODE_ENV === 'development';
+app.use(cors({
+  origin: (origin, cb) => {
+    // In development allow any localhost origin (Vite can pick any free port)
+    if (!origin || (isDev && /^http:\/\/localhost:\d+$/.test(origin))) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
