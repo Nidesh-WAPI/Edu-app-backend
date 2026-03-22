@@ -21,6 +21,8 @@ services:
       # ── CORS — both Firebase Hosting URLs ────────────────────────────────────
       - key: CLIENT_URL
         value: https://eduapp-810d8.web.app,https://eduapp-810d8.firebaseapp.com
+      - key: RENDER_URL
+        value: https://edu-app-backend-vkf0.onrender.com
 
       # ── Secrets — set these manually in Render dashboard ─────────────────────
       - key: MONGO_URI
