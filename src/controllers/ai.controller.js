@@ -88,7 +88,8 @@ const deepDive = asyncHandler(async (req, res) => {
         subject: subjectId,
         content: { $regex: words.join('|'), $options: 'i' },
       })
-        .select('content pageNumber')
+        .select('content pageNumber pdfPageIndex chapter')
+        .populate('chapter', 'pdfFileName title')
         .limit(4);
     }
   }
@@ -103,6 +104,26 @@ const deepDive = asyncHandler(async (req, res) => {
     grade: classLevel.grade,
   });
 
+  // Build source pages from context chunks (for kids textbook image viewer)
+  const seenPages = new Set();
+  const sourcePages = contextChunks
+    .filter((c) => c.pdfPageIndex && c.chapter?.pdfFileName)
+    .reduce((acc, c) => {
+      const key = `${c.chapter._id}-${c.pdfPageIndex}`;
+      if (!seenPages.has(key)) {
+        seenPages.add(key);
+        acc.push({
+          chapterId: c.chapter._id,
+          chapterTitle: c.chapter.title,
+          pdfFileName: c.chapter.pdfFileName,
+          pdfPageIndex: c.pdfPageIndex,
+          pageNumber: c.pageNumber,
+        });
+      }
+      return acc;
+    }, [])
+    .slice(0, 3); // max 3 pages
+
   // Quiz step: parse JSON from response
   if (step === 'quiz') {
     const jsonMatch = rawText.match(/\[[\s\S]*\]/);
@@ -111,13 +132,13 @@ const deepDive = asyncHandler(async (req, res) => {
     }
     try {
       const questions = JSON.parse(jsonMatch[0]);
-      return res.json(new ApiResponse(200, 'Quiz generated', { step, questions }));
+      return res.json(new ApiResponse(200, 'Quiz generated', { step, questions, sourcePages }));
     } catch {
       throw new ApiError(500, 'Quiz response could not be parsed — please try again');
     }
   }
 
-  res.json(new ApiResponse(200, 'Deep dive content generated', { step, reply: rawText }));
+  res.json(new ApiResponse(200, 'Deep dive content generated', { step, reply: rawText, sourcePages }));
 });
 
 module.exports = { chatWithAI, deepDive };

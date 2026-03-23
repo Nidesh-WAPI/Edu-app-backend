@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -25,6 +26,9 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 app.use('/api/v1', routes);
+
+// Serve uploaded files (PDFs, images) as static assets
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date() }));
 
